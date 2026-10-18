@@ -1,24 +1,25 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 import { after, before, test } from "node:test";
 
 import {
   AnalysisOutputError,
   AnalysisProviderError,
   aiIsConfigured,
-  analyzePrdWithOpenAI,
+  analyzePrdWithGemini,
+  classifyGeminiError,
+  GEMINI_MODEL,
   makeConfidenceSignal,
   runPreflightChecks,
 } from "../src/lib/analysis-service.ts";
 
-const originalApiKey = process.env.OPENAI_API_KEY;
-const originalBaseUrl = process.env.OPENAI_BASE_URL;
+const originalGeminiApiKey = process.env.GEMINI_API_KEY;
+const originalGoogleStudio = process.env.GOOGLE_STUDIO;
 
 after(() => {
-  if (originalApiKey === undefined) delete process.env.OPENAI_API_KEY;
-  else process.env.OPENAI_API_KEY = originalApiKey;
-  if (originalBaseUrl === undefined) delete process.env.OPENAI_BASE_URL;
-  else process.env.OPENAI_BASE_URL = originalBaseUrl;
+  if (originalGeminiApiKey === undefined) delete process.env.GEMINI_API_KEY;
+  else process.env.GEMINI_API_KEY = originalGeminiApiKey;
+  if (originalGoogleStudio === undefined) delete process.env.GOOGLE_STUDIO;
+  else process.env.GOOGLE_STUDIO = originalGoogleStudio;
 });
 
 function validDraft(evidence = "Users can request a data export from settings.") {
@@ -44,51 +45,41 @@ function validDraft(evidence = "Users can request a data export from settings.")
   };
 }
 
-async function withMockOpenAI(response, action) {
-  const server = createServer((_req, res) => {
-    res.writeHead(response.status ?? 200, {
-      "content-type": "application/json",
-    });
-    res.end(
-      JSON.stringify(
-        response.body ?? {
-          id: "chatcmpl-test",
-          object: "chat.completion",
-          created: 0,
-          model: "test-model",
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: "assistant",
-                content: JSON.stringify(response.draft),
-              },
-              finish_reason: "stop",
-            },
-          ],
-        },
-      ),
-    );
-  });
-
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  assert.ok(address && typeof address === "object");
-  process.env.OPENAI_API_KEY = "local-test-key";
-  process.env.OPENAI_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
-
-  try {
-    await action();
-  } finally {
-    await new Promise((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
-  }
+async function withMockGemini(response, action) {
+  process.env.GEMINI_API_KEY = "local-test-key";
+  delete process.env.GOOGLE_STUDIO;
+  const calls = [];
+  const models = {
+    generateContent: async (params) => {
+      calls.push(params);
+      if (response.error) throw response.error;
+      return {
+        text: response.text ?? JSON.stringify(response.draft),
+      };
+    },
+  };
+  await action(models, calls);
 }
 
 test("AI configuration reports a missing key without reading or exposing it", () => {
   assert.equal(aiIsConfigured(""), false);
   assert.equal(aiIsConfigured("configured"), true);
+});
+
+test("Gemini API configuration accepts the existing server-side Google Studio secret", () => {
+  process.env.GEMINI_API_KEY = "";
+  process.env.GOOGLE_STUDIO = "configured-server-secret";
+  assert.equal(aiIsConfigured(), true);
+});
+
+test("analysis fails clearly without either server-side Gemini key", async () => {
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_STUDIO;
+  await assert.rejects(
+    analyzePrdWithGemini("Data export", "Users can export reports."),
+    (error) =>
+      error instanceof AnalysisProviderError && error.kind === "missing_key",
+  );
 });
 
 test("preflight checks are deterministic and short context is a non-blocking signal", () => {
@@ -102,11 +93,12 @@ test("preflight checks are deterministic and short context is a non-blocking sig
   );
 });
 
-test("a valid AI response is accepted only when its quote exactly appears in the PRD", async () => {
-  await withMockOpenAI({ draft: validDraft() }, async () => {
-    const result = await analyzePrdWithOpenAI(
+test("a valid Gemini response is accepted only when its quote exactly appears in the PRD", async () => {
+  await withMockGemini({ draft: validDraft() }, async (models, calls) => {
+    const result = await analyzePrdWithGemini(
       "Data export",
       "Users can request a data export from settings.",
+      models,
     );
     assert.equal(result.findings.length, 1);
     assert.equal(
@@ -115,56 +107,109 @@ test("a valid AI response is accepted only when its quote exactly appears in the
     );
     assert.ok(result.findings[0].id);
     assert.equal(result.questions.length, 2);
+    assert.equal(calls[0].model, GEMINI_MODEL);
+    assert.equal(calls[0].config.responseMimeType, "application/json");
+    assert.equal(calls[0].config.responseJsonSchema.type, "object");
   });
 });
 
-test("an unsupported quotation rejects the entire AI response", async () => {
-  await withMockOpenAI(
+test("an unsupported quotation rejects the entire Gemini response", async () => {
+  await withMockGemini(
     { draft: validDraft("This sentence is not in the PRD.") },
-    async () => {
+    async (models) => {
       await assert.rejects(
-        analyzePrdWithOpenAI("Data export", "Users can export reports."),
+        analyzePrdWithGemini(
+          "Data export",
+          "Users can export reports.",
+          models,
+        ),
         AnalysisOutputError,
       );
     },
   );
 });
 
-test("an OpenAI API failure is returned as a provider error", async () => {
-  await withMockOpenAI(
-    {
-      status: 503,
-      body: { error: { message: "test service unavailable" } },
-    },
-    async () => {
+test("unspecified evidence is normalized to null before returning the finding", async () => {
+  const draft = {
+    findings: [
+      {
+        category: "Missing Logic",
+        severity: "Medium",
+        title: "Retry behavior is missing",
+        evidenceType: "not_specified",
+        evidence: "",
+        missingRequirement: "The retry policy is not defined.",
+        implementationRisk:
+          "Implementations could retry at different times or not at all.",
+        recommendation: "Specify when and how many retries are allowed.",
+      },
+    ],
+    questions: [
+      "How many retry attempts should the first release allow?",
+      "How long should the app wait between retry attempts?",
+    ],
+  };
+  await withMockGemini({ draft }, async (models) => {
+    const result = await analyzePrdWithGemini(
+      "Data export",
+      "Users can export reports.",
+      models,
+    );
+    assert.equal(result.findings[0].evidenceType, "not_specified");
+    assert.equal(result.findings[0].evidence, null);
+  });
+});
+
+test("malformed Gemini JSON is rejected instead of returned as an analysis", async () => {
+  await withMockGemini({ text: "not valid JSON" }, async (models) => {
+    await assert.rejects(
+      analyzePrdWithGemini("Data export", "Users can export reports.", models),
+      AnalysisOutputError,
+    );
+  });
+});
+
+test("Gemini service errors are returned as provider errors", async () => {
+  await withMockGemini(
+    { error: Object.assign(new Error("test service unavailable"), { status: 503 }) },
+    async (models) => {
       await assert.rejects(
-        analyzePrdWithOpenAI("Data export", "Users can export reports."),
+        analyzePrdWithGemini(
+          "Data export",
+          "Users can export reports.",
+          models,
+        ),
         AnalysisProviderError,
       );
     },
   );
 });
 
-test("an exhausted OpenAI quota is distinguished from a temporary API outage", async () => {
-  await withMockOpenAI(
-    {
-      status: 429,
-      body: {
-        error: {
-          message: "You have no credits remaining.",
-          type: "insufficient_quota",
-          code: "insufficient_quota",
-        },
-      },
-    },
-    async () => {
-      await assert.rejects(
-        analyzePrdWithOpenAI("Data export", "Users can export reports."),
-        (error) =>
-          error instanceof AnalysisProviderError && error.kind === "credits",
-      );
-    },
+test("Gemini quota and rate-limit errors are distinguished", () => {
+  assert.equal(
+    classifyGeminiError(
+      Object.assign(new Error("You have exceeded your quota."), {
+        status: 429,
+      }),
+    ).kind,
+    "credits",
   );
+  assert.equal(
+    classifyGeminiError(
+      Object.assign(new Error("Rate limit exceeded for requests per minute."), {
+        status: 429,
+      }),
+    ).kind,
+    "rate_limit",
+  );
+});
+
+test("an invalid Gemini key is classified without returning provider details", () => {
+  const error = classifyGeminiError(
+    Object.assign(new Error("API key not valid"), { status: 400 }),
+  );
+  assert.equal(error.kind, "invalid_key");
+  assert.equal(error.message, "Gemini rejected the configured API key.");
 });
 
 test("confidence is a bounded heuristic with an explicit calibration disclaimer", () => {

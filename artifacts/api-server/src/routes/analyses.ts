@@ -15,7 +15,8 @@ import { analysesTable, db } from "@workspace/db";
 import {
   AnalysisOutputError,
   AnalysisProviderError,
-  analyzePrdWithOpenAI,
+  aiIsConfigured,
+  analyzePrdWithGemini,
   getAiStatusMessage,
   makeConfidenceSignal,
   runPreflightChecks,
@@ -49,7 +50,7 @@ function toListItem(row: {
 }
 
 router.get("/ai/status", (_req, res): void => {
-  const ready = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const ready = aiIsConfigured();
   res.json(
     GetAiStatusResponse.parse({
       ready,
@@ -107,17 +108,17 @@ router.post("/analyses", async (req, res): Promise<void> => {
   }
 
   const preflightChecks = runPreflightChecks(featureName, prdText);
-  if (!process.env.OPENAI_API_KEY?.trim()) {
+  if (!aiIsConfigured()) {
     res.status(503).json({
       error:
-        "OpenAI is not configured. Add OPENAI_API_KEY in Replit Secrets, then retry.",
+        "Gemini is not configured. Add GEMINI_API_KEY in Replit Secrets, then retry.",
     });
     return;
   }
 
-  let result: Awaited<ReturnType<typeof analyzePrdWithOpenAI>>;
+  let result: Awaited<ReturnType<typeof analyzePrdWithGemini>>;
   try {
-    result = await analyzePrdWithOpenAI(featureName, prdText);
+    result = await analyzePrdWithGemini(featureName, prdText);
   } catch (error) {
     if (error instanceof AnalysisOutputError) {
       req.log.warn({ err: error }, "AI analysis output failed validation");
@@ -129,11 +130,11 @@ router.post("/analyses", async (req, res): Promise<void> => {
     }
 
     if (error instanceof AnalysisProviderError) {
-      req.log.error({ err: error }, "OpenAI analysis request failed");
+      req.log.error({ kind: error.kind }, "Gemini analysis request failed");
       if (error.kind === "credits") {
         res.status(503).json({
           error:
-            "The OpenAI account has no API credits remaining. Add API credits to that account, then retry. No result was saved.",
+            "The Gemini API quota or account limit has been reached. Check Google AI Studio quota and retry later. No result was saved.",
         });
         return;
       }
@@ -141,7 +142,7 @@ router.post("/analyses", async (req, res): Promise<void> => {
       if (error.kind === "rate_limit") {
         res.status(503).json({
           error:
-            "OpenAI is temporarily rate-limited. Wait briefly and retry. No result was saved.",
+            "Gemini is temporarily rate-limited. Wait briefly and retry. No result was saved.",
         });
         return;
       }
@@ -149,7 +150,7 @@ router.post("/analyses", async (req, res): Promise<void> => {
       if (error.kind === "invalid_key") {
         res.status(503).json({
           error:
-            "OpenAI rejected the configured key. Check OPENAI_API_KEY in Replit Secrets, then retry. No result was saved.",
+            "Gemini rejected the configured API key. Check GEMINI_API_KEY in Replit Secrets, then retry. No result was saved.",
         });
         return;
       }
