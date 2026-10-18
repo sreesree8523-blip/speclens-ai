@@ -8,8 +8,11 @@ dashboard calculated from stored analyses.
 ## Setup
 
 1. Provision the Replit PostgreSQL database.
-2. Add `OPENAI_API_KEY` in the Replit project’s Secrets. The key is used by the
-   API server only and is never sent to the browser.
+2. Create an API key in [Google AI Studio](https://aistudio.google.com/apikey)
+   and add it to Replit Secrets as `GEMINI_API_KEY`. The key is read by the API
+   server only and is never sent to the browser or returned by an API endpoint.
+   For compatibility, the server also accepts this project's existing
+   server-side `GOOGLE_STUDIO` secret; prefer `GEMINI_API_KEY` for new setup.
 3. Apply the development database schema:
 
    ```sh
@@ -19,11 +22,12 @@ dashboard calculated from stored analyses.
 4. Start the `artifacts/api-server: API Server` and
    `artifacts/speclens-ai: web` workflows.
 
-The model currently used is `gpt-4.1-mini`. The API status endpoint reports
-whether the server has a configured key. If it is missing, the interface
-explains how to add it; SpecLens never substitutes sample AI output.
-An OpenAI quota or credit error is shown separately from a transient service
-failure so the user knows whether retrying immediately can help.
+The model currently used is `gemini-2.5-flash`, which was listed as supporting
+`generateContent` by the configured Google AI Studio key. The API status
+endpoint reports whether a server-side Gemini key is configured; account access
+and quota are checked when an analysis is requested. SpecLens never substitutes
+sample AI output. Quota exhaustion, rate limits, invalid keys, and malformed
+model responses are reported without saving an analysis.
 
 ## Architecture
 
@@ -31,9 +35,9 @@ failure so the user knows whether retrying immediately can help.
   `@workspace/api-client-react`.
 - **API:** Shared Express server under `/api`; OpenAPI contract is maintained in
   `lib/api-spec/openapi.yaml`.
-- **AI:** The API server calls OpenAI using `OPENAI_API_KEY`. Model output is
-  structured, schema-validated, and each quoted evidence passage must exactly
-  occur in the submitted PRD before it can be saved.
+- **AI:** The API server calls Gemini through Google's official `@google/genai`
+  SDK. Structured JSON is schema-validated, and each quoted evidence passage
+  must exactly occur in the submitted PRD before it can be saved.
 - **Persistence:** PostgreSQL via Drizzle. Completed analyses, PRD text,
   findings, questions, confidence signal, preflight checks, and creation time
   are stored in the `speclens_analyses` table.
@@ -62,9 +66,10 @@ pnpm --filter @workspace/api-server run typecheck
 pnpm --filter @workspace/speclens-ai run typecheck
 ```
 
-The API unit tests exercise preflight checks, the confidence disclaimer, a
-valid cited finding, a rejected unsupported quotation, and a simulated OpenAI
-service failure using a local test server.
+The API unit tests exercise key detection, preflight checks, the confidence
+disclaimer, schema-constrained Gemini requests, a valid cited finding, rejected
+unsupported quotations and malformed JSON, and Gemini quota, rate-limit,
+invalid-key, and service failures using a test client.
 
 ## Manual test steps
 
@@ -78,10 +83,9 @@ service failure using a local test server.
 4. **Missing logic:** Use a short password-reset flow without defining expiry,
    invalid-link, or unknown-account behavior. Confirm material omissions are
    labeled as not specified rather than quoted.
-5. **API failure:** Run the API unit test for the simulated OpenAI failure.
-   For a live failure, temporarily set an invalid OpenAI key in a development
-   secret, try an analysis, confirm the app shows a retryable error and no
-   analysis is recorded, then restore the key.
+5. **API failure:** Run the API unit tests for Gemini quota, rate-limit,
+   invalid-key, and service errors. Confirm failed requests do not create
+   history records.
 6. **Persistence after reload:** Complete an analysis, open History, open that
    saved record, refresh the page, and confirm it remains available. Check that
    the dashboard totals include the saved record.

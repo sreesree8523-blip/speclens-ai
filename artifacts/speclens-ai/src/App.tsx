@@ -178,7 +178,7 @@ function HomePage() {
   return <div className="page">
     <div className="hero-head">
       <div><div className="eyebrow">Before the first ticket</div><h1 className="page-title">Make the handoff<br />feel certain.</h1><p className="page-lede">Review your product requirements for material ambiguity, missing logic, and undefined inputs—before they become engineering assumptions.</p></div>
-        <div className="ready-pill"><span className="status-dot" style={{ width: 6, height: 6, margin: 0 }} />{aiStatus?.ready ? 'OPENAI KEY CONFIGURED' : 'AI SETUP REQUIRED'}</div>
+        <div className="ready-pill"><span className="status-dot" style={{ width: 6, height: 6, margin: 0 }} />{aiStatus?.ready ? 'GEMINI KEY CONFIGURED' : 'AI SETUP REQUIRED'}</div>
     </div>
     <div className="form-panel">
       <div className="form-topline"><span className="step-num">01</span> Add your specification <span style={{ marginLeft: 'auto', color: 'hsl(var(--muted-foreground))', fontSize: 10, fontWeight: 400 }}>Saved to this workspace</span></div>
