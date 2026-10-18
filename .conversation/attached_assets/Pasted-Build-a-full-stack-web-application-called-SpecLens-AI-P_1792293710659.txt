@@ -1,0 +1,59 @@
+Build a full-stack web application called **SpecLens AI — PRD-to-Engineering Gap Analyzer**.
+
+**Purpose:** Help Product Managers identify material gaps in a Product Requirements Document (PRD) before handing it to engineering.
+
+### 1. Core user workflow
+- Provide a clean, mobile-responsive interface where a user enters a feature name and pastes a PRD or feature specification.
+- Validate required fields and reject empty or excessively long inputs before calling the AI.
+- Run deterministic pre-AI checks and make the checks visible in the interface.
+- Call a real LLM API from the server. Never expose the API key in frontend code.
+- Parse and validate the model response before displaying or saving it.
+- Show findings in a structured interface, not raw JSON.
+
+### 2. Analysis output
+For each finding, show:
+- Category: Ambiguity, Missing Logic, or Undefined Inputs.
+- Severity: High, Medium, or Low.
+- The exact supporting text from the PRD, or clearly state that a requirement is not specified.
+- Why this could cause implementation problems.
+- A specific recommended clarification or fix.
+
+Generate 2–3 prioritized questions an engineer would ask the Product Manager.
+
+Include a confidence indicator with an explanation that it is a heuristic signal, not a statistically calibrated probability. Do not invent requirements or flag every absent detail. Distinguish a genuinely material gap from an optional detail.
+
+### 3. Reliability and error handling
+- Require evidence for every finding.
+- Do not invent quotations or claim that text exists when it does not.
+- Return an understandable error if the API fails, times out, or produces invalid output.
+- Never display a fabricated successful analysis when the API fails.
+- Provide a retry action.
+
+### 4. Database and history
+Persist completed analyses in a database, including the feature name, PRD text, findings, questions, confidence signal, and timestamp.
+Provide a history view that opens previous analyses.
+Use Replit's supported database integration where available. Do not pretend data has been saved if persistence fails.
+
+### 5. Admin dashboard
+Create a simple dashboard showing:
+- Total analyses completed.
+- Findings by category.
+- Findings by severity.
+- Recent analyses.
+
+Calculate these metrics from persisted records, not hard-coded sample numbers.
+
+### 6. Interface
+Use a professional product-management SaaS design. Make it usable on a mobile screen, with clear headings, readable finding cards, loading states, empty states, and error messages.
+
+### 7. Implementation requirements
+- Build a working full-stack application, not just a mockup.
+- Use a server-side LLM integration with an environment secret for the API key.
+- If no API key is configured, show setup instructions and a clear configuration error. Never silently substitute mock AI output.
+- Include a README with setup instructions, required environment variables, architecture, and manual test steps.
+- Keep the implementation simple enough to finish and test today.
+- Do not add authentication, collaboration, or unrelated features unless essential.
+- Test the happy path, empty input, ambiguous requirements, missing logic, API failure, and persistence after reload.
+- Do not claim a requirement is complete unless it has actually been implemented and tested.
+
+Start building the application now. First establish the working end-to-end workflow, then improve the interface and dashboard.

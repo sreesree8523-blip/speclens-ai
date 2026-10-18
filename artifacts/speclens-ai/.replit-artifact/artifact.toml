@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "SpecLens AI"
+description = "A product requirements analyzer that helps product managers catch material ambiguity, missing logic, and undefined inputs before handing a PRD to engineering, with evidence-backed findings, saved analysis history, and a metrics dashboard."
+version = "1.0.0"
+id = "artifacts/speclens-ai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23172
+
+[services.development]
+run = "pnpm --filter @workspace/speclens-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/speclens-ai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/speclens-ai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23172"
+BASE_PATH = "/"

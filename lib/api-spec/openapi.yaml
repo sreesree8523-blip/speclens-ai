@@ -3,13 +3,19 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: SpecLens AI PRD analysis and history API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: analyses
+    description: PRD analysis and saved history
+  - name: dashboard
+    description: Persisted analysis metrics
+  - name: system
+    description: AI integration status
 paths:
   /healthz:
     get:
@@ -24,13 +30,320 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /analyses:
+    get:
+      operationId: listAnalyses
+      tags: [analyses]
+      summary: List recent analyses
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Recent saved analyses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisListItem"
+    post:
+      operationId: analyzePrd
+      tags: [analyses]
+      summary: Analyze a PRD and persist the completed analysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalysisInput"
+      responses:
+        "201":
+          description: Analysis completed and saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+        "400":
+          description: Invalid or empty input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: PRD exceeds the maximum supported length
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: The AI service failed or returned invalid output
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: AI integration or persistence is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /analyses/{id}:
+    get:
+      operationId: getAnalysis
+      tags: [analyses]
+      summary: Get a saved analysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Saved analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+        "404":
+          description: Analysis not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get metrics calculated from saved analyses
+      responses:
+        "200":
+          description: Persisted analysis metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /ai/status:
+    get:
+      operationId: getAiStatus
+      tags: [system]
+      summary: Check whether the server-side AI integration is configured
+      responses:
+        "200":
+          description: AI integration configuration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiStatus"
 components:
   schemas:
     HealthStatus:
       type: object
+      additionalProperties: false
       properties:
         status:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+      required: [error]
+    AnalysisInput:
+      type: object
+      additionalProperties: false
+      properties:
+        featureName:
+          type: string
+          minLength: 1
+          maxLength: 120
+        prdText:
+          type: string
+          minLength: 1
+          maxLength: 20000
+      required: [featureName, prdText]
+    PreflightCheck:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        passed:
+          type: boolean
+        detail:
+          type: string
+      required: [id, label, passed, detail]
+    Finding:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        category:
+          type: string
+          enum: [Ambiguity, "Missing Logic", "Undefined Inputs"]
+        severity:
+          type: string
+          enum: [High, Medium, Low]
+        title:
+          type: string
+        evidenceType:
+          type: string
+          enum: [quoted_text, not_specified]
+        evidence:
+          type: ["string", "null"]
+        missingRequirement:
+          type: string
+        implementationRisk:
+          type: string
+        recommendation:
+          type: string
+      required:
+        - id
+        - category
+        - severity
+        - title
+        - evidenceType
+        - evidence
+        - missingRequirement
+        - implementationRisk
+        - recommendation
+    ConfidenceSignal:
+      type: object
+      additionalProperties: false
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        explanation:
+          type: string
+      required: [score, explanation]
+    Analysis:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+        featureName:
+          type: string
+        prdText:
+          type: string
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Finding"
+        questions:
+          type: array
+          minItems: 2
+          maxItems: 3
+          items:
+            type: string
+        confidence:
+          $ref: "#/components/schemas/ConfidenceSignal"
+        preflightChecks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreflightCheck"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - featureName
+        - prdText
+        - findings
+        - questions
+        - confidence
+        - preflightChecks
+        - createdAt
+    AnalysisListItem:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+        featureName:
+          type: string
+        findingCount:
+          type: integer
+        highSeverityCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, featureName, findingCount, highSeverityCount, createdAt]
+    CategoryCounts:
+      type: object
+      additionalProperties: false
+      properties:
+        ambiguity:
+          type: integer
+        missingLogic:
+          type: integer
+        undefinedInputs:
+          type: integer
+      required: [ambiguity, missingLogic, undefinedInputs]
+    SeverityCounts:
+      type: object
+      additionalProperties: false
+      properties:
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+      required: [high, medium, low]
+    DashboardSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        totalAnalyses:
+          type: integer
+        totalFindings:
+          type: integer
+        findingsByCategory:
+          $ref: "#/components/schemas/CategoryCounts"
+        findingsBySeverity:
+          $ref: "#/components/schemas/SeverityCounts"
+        recentAnalyses:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisListItem"
+      required:
+        - totalAnalyses
+        - totalFindings
+        - findingsByCategory
+        - findingsBySeverity
+        - recentAnalyses
+    AiStatus:
+      type: object
+      additionalProperties: false
+      properties:
+        ready:
+          type: boolean
+        message:
+          type: string
+      required: [ready, message]
 
