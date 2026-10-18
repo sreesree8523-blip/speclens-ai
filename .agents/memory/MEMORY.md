@@ -1,0 +1,1 @@
+- [AI provider setup](openai-provider-setup.md) — Handle unavailable managed AI setup and distinguish configured credentials from usable provider quota.
