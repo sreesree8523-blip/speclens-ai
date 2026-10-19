@@ -11,8 +11,6 @@ dashboard calculated from stored analyses.
 2. Create an API key in [Google AI Studio](https://aistudio.google.com/apikey)
    and add it to Replit Secrets as `GEMINI_API_KEY`. The key is read by the API
    server only and is never sent to the browser or returned by an API endpoint.
-   For compatibility, the server also accepts this project's existing
-   server-side `GOOGLE_STUDIO` secret; prefer `GEMINI_API_KEY` for new setup.
 3. Apply the development database schema:
 
    ```sh
@@ -22,10 +20,11 @@ dashboard calculated from stored analyses.
 4. Start the `artifacts/api-server: API Server` and
    `artifacts/speclens-ai: web` workflows.
 
-The model currently used is `gemini-2.5-flash`, which was listed as supporting
-`generateContent` by the configured Google AI Studio key. The API status
-endpoint reports whether a server-side Gemini key is configured; account access
-and quota are checked when an analysis is requested. SpecLens never substitutes
+The model currently used is `gemini-3.5-flash-lite`. The configured Google AI
+Studio key lists it with `generateContent` support, and Google's model
+documentation lists structured outputs as supported. The API status endpoint
+reports whether a server-side Gemini key is configured; account access and
+quota are checked when an analysis is requested. SpecLens never substitutes
 sample AI output. Quota exhaustion, rate limits, invalid keys, and malformed
 model responses are reported without saving an analysis.
 

@@ -1,1 +1,1 @@
-- [AI provider setup](openai-provider-setup.md) — Handle unavailable managed AI setup and distinguish configured credentials from usable provider quota.
+- [Gemini provider setup](gemini-provider-setup.md) — Keep Gemini credentials server-side and choose a model supported by both the key and structured output.
