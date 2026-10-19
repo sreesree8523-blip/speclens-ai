@@ -47,3 +47,10 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Environment variables and credential material
+.env
+.env.*
+*.env
+*.pem
+*.key
