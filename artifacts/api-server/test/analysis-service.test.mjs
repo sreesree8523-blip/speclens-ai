@@ -13,13 +13,10 @@ import {
 } from "../src/lib/analysis-service.ts";
 
 const originalGeminiApiKey = process.env.GEMINI_API_KEY;
-const originalGoogleStudio = process.env.GOOGLE_STUDIO;
 
 after(() => {
   if (originalGeminiApiKey === undefined) delete process.env.GEMINI_API_KEY;
   else process.env.GEMINI_API_KEY = originalGeminiApiKey;
-  if (originalGoogleStudio === undefined) delete process.env.GOOGLE_STUDIO;
-  else process.env.GOOGLE_STUDIO = originalGoogleStudio;
 });
 
 function validDraft(evidence = "Users can request a data export from settings.") {
@@ -47,7 +44,6 @@ function validDraft(evidence = "Users can request a data export from settings.")
 
 async function withMockGemini(response, action) {
   process.env.GEMINI_API_KEY = "local-test-key";
-  delete process.env.GOOGLE_STUDIO;
   const calls = [];
   const models = {
     generateContent: async (params) => {
@@ -66,15 +62,13 @@ test("AI configuration reports a missing key without reading or exposing it", ()
   assert.equal(aiIsConfigured("configured"), true);
 });
 
-test("Gemini API configuration accepts the existing server-side Google Studio secret", () => {
-  process.env.GEMINI_API_KEY = "";
-  process.env.GOOGLE_STUDIO = "configured-server-secret";
+test("Gemini API configuration reads the server-side GEMINI_API_KEY", () => {
+  process.env.GEMINI_API_KEY = "configured-server-secret";
   assert.equal(aiIsConfigured(), true);
 });
 
-test("analysis fails clearly without either server-side Gemini key", async () => {
+test("analysis fails clearly without the server-side Gemini key", async () => {
   delete process.env.GEMINI_API_KEY;
-  delete process.env.GOOGLE_STUDIO;
   await assert.rejects(
     analyzePrdWithGemini("Data export", "Users can export reports."),
     (error) =>
